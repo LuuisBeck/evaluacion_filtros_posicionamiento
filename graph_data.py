@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import statistics
+from pykalman import KalmanFilter
+import copy
 
 lines = []
 values_rssi = []
@@ -60,13 +62,42 @@ for value in grouped_values:
         average_values_rssi.append(mean)
         median_values_rssi.append(median)
 
+# Kalman Filter
+observation_matrix = np.asarray([[1, 0]])
+x = timestamps
+dx = [np.mean(np.diff(x))] + list(np.diff(x))
+transition_matrices = np.asarray([[[1, each_dx],[0,1]] for each_dx in dx])
 
-plt.plot(timestamps, values_rssi, 'o')
-plt.plot(t_average, median_values_rssi, 'o', color="lime", markersize= 3)
-plt.plot(t_average, average_values_rssi, 'o', color="red", markersize= 3)
+# observations
+y = np.transpose(np.asarray([values_rssi]))
+y = np.ma.array(y)
+
+leave_1_out_cov = []
+
+for i in range(len(y)):
+    y_masked = np.ma.array(copy.deepcopy(y))
+    y_masked[i] = np.ma.masked
+
+    kf1 = KalmanFilter(transition_matrices = transition_matrices,
+                   observation_matrices = observation_matrix)
+
+    kf1 = kf1.em(y_masked)
+
+    leave_1_out_cov.append(kf1.observation_covariance[0,0])
+
+kf1 = KalmanFilter(transition_matrices=transition_matrices,
+                    observation_matrices=observation_matrix)
+kf1 = kf1.em(y)
+(smoothed_state_means, smoothed_state_covariances) = kf1.smooth(y)
+
+
+plt.plot(timestamps, values_rssi, 'o', color='grey')
+plt.plot(t_average, median_values_rssi, '-', color="green", markersize= 3)
+plt.plot(t_average, average_values_rssi, '-', color="red", markersize= 3)
+plt.plot(x, smoothed_state_means[:,0], '-', color="blue")
 plt.xlabel("time (s)")
 plt.ylabel("values RSSI (dB)")
-plt.legend(['valor a 1 metro', 'Filtro Promedio', 'Filtro Mediana'])
+plt.legend(['valor a 1 metro', 'Filtro Mediana', 'Filtro Promedio', 'Filtro Kalman'])
 
 plt.ylim([-100, -30])
 plt.show()
